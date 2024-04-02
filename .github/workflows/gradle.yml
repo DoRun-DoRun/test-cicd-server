@@ -1,0 +1,53 @@
+name: Java CI with Gradle
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OCI_CONFIG_USER: ${{ secrets.OCI_CONFIG_USER }}
+      OCI_CONFIG_TENANCY: ${{ secrets.OCI_CONFIG_TENANCY }}
+      OCI_CONFIG_FINGERPRINT: ${{ secrets.OCI_CONFIG_FINGERPRINT }}
+      OCI_CONFIG_KEY_CONTENT: ${{ secrets.OCI_CONFIG_KEY_CONTENT }}
+      OCI_CONFIG_REGION: ${{ secrets.OCI_CONFIG_REGION }}
+      OCI_BUCKET_NS: ${{ secrets.OCI_BUCKET_NS }}
+      OCI_BUCKET_NAME: ${{ secrets.OCI_BUCKET_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew bootJar
+        
+      - name: Docker build
+        run: docker build -t test-service .
+
+      - name: oci list objects
+        uses: oracle-actions/run-oci-cli-command@v1.1.1
+        with:
+          command: 'oci os object list -ns ${{ env.OCI_BUCKET_NS }} -bn ${{ env.OCI_BUCKET_NAME }}'
+          
+      - name: oci upload image
+        uses: oracle-actions/run-oci-cli-command@v1.1.1
+        with:
+          command: 'oci os object put -ns ${{ env.OCI_BUCKET_NS }} -bn ${{ env.OCI_BUCKET_NAME }} --file . --name <object_name>  --no-multipart'
